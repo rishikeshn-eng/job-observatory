@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Job Posting Observatory</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1c1c1a;--mut:#6b6b66;--card:#fff;--bd:#e3e2dc;--ac:#2a6f6b;--warn:#c2410c;--bar:#9db8b5}
+@media(prefers-color-scheme:dark){:root{--bg:#161614;--fg:#ecebe6;--mut:#9a9992;--card:#1f1f1c;--bd:#33332f;--ac:#6cc2bc;--warn:#fb923c;--bar:#3d5a57}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:24px 16px 64px}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 8px}
+.sub{color:var(--mut);margin:0 0 16px}.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px 16px}
+.banner{background:var(--warn);color:#fff;border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:13.5px}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--bd)}th:first-child,td:first-child{text-align:left}th{color:var(--mut)}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.kp b{display:block;font-size:20px}.kp span{color:var(--mut);font-size:12.5px}
+.bar{display:inline-block;height:10px;background:var(--bar);border-radius:2px;vertical-align:middle}.bar.law{background:var(--ac)}
+.note{font-size:12.5px;color:var(--mut)}.bad{color:var(--warn)}.q{font-size:12.5px;color:var(--mut);margin:2px 0 10px}
+@media(max-width:600px){.hide-s{display:none}}
+</style></head><body><main>
+<h1>Job Posting Observatory</h1>
+<p class="sub">Which postings are copies, how often roles are relisted, who discloses pay, and how gendered the wording is.</p>
+<div class="banner" id="banner"></div>
+<div class="card"><div class="kp" id="kp"></div></div>
+<h2>1. Duplicates across companies</h2>
+<div class="card"><table id="dd"></table><p class="note">Word 5-gram shingles, MinHash (64 permutations) with LSH banding, candidates verified by exact Jaccard &ge; 0.6. Shingles that appear in more than 5% of postings are dropped first: without that, a shared equal-opportunity paragraph makes unrelated postings look like copies.</p><div id="dx"></div></div>
+<h2>2. Repost behaviour</h2>
+<div class="card"><div class="kp" id="rk"></div><table id="rt"></table>
+<p class="note"><b>What this does and doesn't show.</b> It measures how often a role (company + title + location) is listed again, including relists under a new job ID that the platform does not link. It does <i>not</i> show that a job is fake: there is no ground truth for ghost jobs, and companies relist for many legitimate reasons (continuous hiring, high turnover, an expired slot).</p></div>
+<h2>3. Pay disclosure</h2>
+<div class="card"><div class="kp" id="pk"></div><table id="pt"></table><p class="note">"Pay-range law" states are CA, NY, CO and WA (an illustrative set; check current statutes and thresholds before drawing compliance conclusions). Postings without a range there are candidates for review, not proven violations: the dataset does not show employer size, remote scope or posting dates relative to each law.</p></div>
+<h2>4. Gendered wording</h2>
+<div class="card"><table id="wt"></table><p class="note" id="wn"></p></div>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent),$=id=>document.getElementById(id),pc=x=>(x*100).toFixed(1)+'%',n0=x=>Math.round(x).toLocaleString('en-IN'),esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+$('banner').textContent=D.synthetic?'Synthetic postings in the Kaggle LinkedIn 2023-24 schema, with planted duplicates, reposts and pay/wording patterns. It validates the methods; the shares below describe the generator, not the labour market.':'Computed on the supplied postings file.';
+if(!D.synthetic)$('banner').style.background='var(--ac)';
+const kp=(id,a)=>$(id).innerHTML=a.map(([v,l])=>`<div><b>${v}</b><span>${l}</span></div>`).join('');
+kp('kp',[[n0(D.postings),'postings'],[D.companies,'companies'],[pc(D.reposts.relisted_share),'roles relisted at least once'],[pc(D.pay.disclosed_overall),'postings disclose a pay range']]);
+const w=D.dedupe['with boilerplate filter'],wo=D.dedupe['no boilerplate filter'],hasT='precision' in w;
+$('dd').innerHTML='<tr><th>Setting</th><th>Cross-company pairs found</th>'+(hasT?'<th>Precision</th><th>Recall</th>':'')+'</tr>'+[['With boilerplate filter',w],['No boilerplate filter',wo]].map(([n,r])=>`<tr><td>${n}</td><td>${n0(r.cross_company_pairs)}</td>${hasT?`<td class="${r.precision<.5?'bad':''}">${pc(r.precision)}</td><td>${pc(r.recall)}</td>`:''}</tr>`).join('');
+$('dx').innerHTML='<p class="q">Largest cross-company clusters:</p>'+D.dup_examples.slice(0,4).map(e=>`<p class="note"><b>${e.n_companies} companies, ${e.size} postings</b> (${esc(e.title)}): ${e.companies.map(esc).join(', ')}<br><i>${esc(e.text)}…</i></p>`).join('');
+const R=D.reposts;kp('rk',[[R.roles+'','distinct roles'],[R.perennial_roles,'perennial roles (4+ listings over 90+ days)'],[R.median_days_between_relists+' d','median gap between relists'],[R.hidden_relist_listings,'relists with no platform link']]);
+const hist=R.listings_hist,mx=Math.max(...Object.values(hist));
+$('rt').innerHTML='<tr><th>Company</th><th>Roles</th><th>Relisted share</th><th class="hide-s">Total listings</th></tr>'+R.top_companies.map(c=>`<tr><td>${esc(c.company)}</td><td>${c.roles}</td><td>${pc(c.relisted_share)}</td><td class="hide-s">${c.listings}</td></tr>`).join('');
+const P=D.pay;kp('pk',[[pc(P.disclosed_law_states),'disclose, pay-range-law states'],[pc(P.disclosed_other_states),'disclose, other states'],[n0(P.law_state_gap_postings),'postings in law states with no range'],[pc(P.wide_range_share),'disclosed ranges wider than 2×']]);
+$('pt').innerHTML='<tr><th>State</th><th>Postings</th><th>Disclosed</th><th class="hide-s"></th></tr>'+P.by_state.map(s=>`<tr><td>${s.state}${s.law?' ★':''}</td><td>${n0(s.postings)}</td><td>${pc(s.disclosed)}</td><td class="hide-s"><span class="bar ${s.law?'law':''}" style="width:${s.disclosed*160}px"></span></td></tr>`).join('');
+$('wt').innerHTML='<tr><th>Role family</th><th>Postings</th><th>Masculine-coded words / posting</th><th>Feminine-coded</th><th>Skew</th><th class="hide-s">Skew incl. title words</th></tr>'+D.wording.families.map(f=>`<tr><td>${f.family}</td><td>${n0(f.postings)}</td><td>${f.masc.toFixed(2)}</td><td>${f.fem.toFixed(2)}</td><td>${f.skew.toFixed(3)}</td><td class="hide-s ${Math.abs(f.skew-f.skew_incl_title_words)>0.05?'bad':''}">${f.skew_incl_title_words.toFixed(3)}</td></tr>`).join('');
+$('wn').textContent='Skew = (masculine - feminine coded words) / sqrt(words). Lexicon: stems after Gaucher, Friesen & Kay (2011), partial transcription. The word stems "analy" and "support" match the job names "Analyst" and "Customer Support", so each posting\'s own title words are excluded; the last column shows how much that matters (red where it moves a family by more than 0.05). A lexicon score is a wording signal. It does not show that a posting discriminates or that it deters applicants.';
+</script></body></html>
